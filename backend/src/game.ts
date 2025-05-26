@@ -56,7 +56,7 @@ export class Game {
     const order = this.orderQueue.dequeue();
     // escolher evento aleatório ou nenhum
     let card: EventCard | null = null;
-    if (Math.random() < 0.7 && this.eventStack.size() > 0) {
+    if (Math.random() < 0.9 && this.eventStack.size() > 0) {
       card = this.eventStack.pop()!;
     }
     current.socket.emit('yourTurn', { order, event: card });
