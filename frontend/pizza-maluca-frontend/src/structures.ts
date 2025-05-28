@@ -3,4 +3,9 @@ export interface Order { id: string; ingredients: string[]; }
 // Representa uma carta de evento, com descrição e impacto na pontuação
 export interface EventCard { id: string; description: string; impact: number; }
 // Representa o estado de um jogador (id, nome e pontuação)
-export interface PlayerState { id: string; name: string; score: number; }
+export interface PlayerState {
+  id: string;
+  name: string;
+  position: number;
+  ingredients: string[];
+}
