@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import Game from './Game';
 import './index.css';
 import type { PlayerState } from './structures';
+import img from './assets/pizzaria-maluca-mainscreen-resized-3.jpg'
 
 // Cria a conexão com o backend via Socket.IO
 const socket: Socket = io('http://localhost:3001');
@@ -15,6 +16,8 @@ const App: React.FC = () => {
   // Estado de fim de jogo (vencedor)
   const [gameOver, setGameOver] = useState<{name: string} | null>(null);
   // --- NOVO ESTADO E FLUXO ---
+  const [diceNumber, setDiceNumber] = useState<number | null>(null);
+  const [ingredienteObito, setIngredienteObtido] = useState<string | null>(null);
   const [step, setStep] = useState<'welcome'|'lobby'|'game'|'end'>('welcome');
   const [room, setRoom] = useState<string>('');
   const [name, setName] = useState<string>('');
@@ -36,6 +39,8 @@ const App: React.FC = () => {
     });
     socket.on('state', state => {
       setPlayers(state.players); // Atualiza sempre os jogadores, incluindo posição
+      setDiceNumber(state.diceNumber); // Atualiza o dado jogado
+      setIngredienteObtido(state.ingredienteObtido); //Coloca o ingrediente obtido pela casa de ingredientes
       if(state.started) setStep('game');
       if(state.winner) setGameOver({ name: state.winner.name });
     });
@@ -182,8 +187,10 @@ const App: React.FC = () => {
         <ul className="player-list">{players.map(p => <li key={p.id}>{p.name}</li>)}</ul>
         <button onClick={handleLeave}>Sair</button>
       </div>
-      <div id="main">
-        <Game socket={socket} me={me!} players={players} gameOver={gameOver} room={room} winnerIngredients={winnerIngredients}/>
+      <div id="main" style= {{backgroundImage: `url(${img})`, backgroundRepeat: 'no-repeat', backgroundSize: 'cover', backgroundPosition: 'center'}}>
+        <Game socket=
+        {socket} me={me!} players={players} gameOver={gameOver} room={room} winnerIngredients={winnerIngredients} diceNumber={diceNumber ?? undefined} 
+        ingredienteObtido={ingredienteObito ?? undefined}/>
       </div>
     </div>
   );

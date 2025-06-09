@@ -4,6 +4,7 @@ interface Player {
   id: string;
   name: string;
   position: number;
+  flavor: string,
   ingredients: string[];
   pendingCard?: { desc: string; effect: (p: Player, sala: Room) => void } | null;
 }
@@ -16,7 +17,19 @@ interface Room {
   board: ('normal' | 'ingredient' | 'event')[];
   winner?: Player;
   maxPlayers: number;
+  diceNumber?: number;
 }
+
+const pizzaFlavors: Record<string, string[]> = {
+  Portuguesa: ['Presunto', 'Queijo', 'Azeitona', 'Cebola', 'Ovo'],
+  Toscana: ['Presunto', 'Azeitona', 'Tomate', 'Linguiça', 'Cebola'],
+  Calabresa: ['Linguiça', 'Queijo', 'Azeitona', 'Cebola', 'Oregano'],
+  Romana: ['Presunto', 'Queijo', 'Ervilha', 'Milho', 'Cebola'],
+  Vegetariana: ['Tomate', 'Broccoli', 'Milho', 'Ovo', 'Ervilha'],
+  Marguerita: ['Tomate', 'Queijo', 'Cebola', 'Oregano', 'Azeitona'],
+};
+
+const flavors = Object.keys(pizzaFlavors);
 
 export class GameServer {
   private io: Server;
@@ -58,7 +71,7 @@ export class GameServer {
           return;
         }
         if (!sala.players.find(p => p.id === socket.id)) {
-          sala.players.push({ id: socket.id, name, position: 0, ingredients: [] });
+          sala.players.push({ id: socket.id, name, position: 0, flavor: '', ingredients: [] });
         }
         socket.join(room);
         socket.emit('joined', { id: socket.id, name });
@@ -103,9 +116,12 @@ export class GameServer {
     sala.board = [
       'normal', 'ingredient', 'normal', 'event', 'ingredient', 'normal', 'event', 'ingredient', 'normal', 'ingredient',
     ];
-    sala.players.forEach(p => {
+    sala.players.forEach((p, idx) => {
+      let randomFlavorIndex = Math.floor(Math.random() * flavors.length);
+      let randomFlavor = flavors[randomFlavorIndex];
       p.position = 0;
       p.ingredients = [];
+      p.flavor = randomFlavor;
     });
     sala.winner = undefined;
     this.emitRoomState(roomId);
@@ -123,7 +139,7 @@ export class GameServer {
     this.io.emit('salasDisponiveis', Array.from(this.rooms.keys()));
   }
 
-  private emitRoomState(roomId: string) {
+  private emitRoomState(roomId: string, dice?: number, ingredienteObtido?: string) {
     const sala = this.rooms.get(roomId);
     if (!sala) return;
     this.io.to(roomId).emit('state', {
@@ -132,8 +148,24 @@ export class GameServer {
       turn: sala.turn,
       board: sala.board,
       winner: sala.winner,
+      diceNumber: dice,
+      ingredienteObtido: ingredienteObtido
     });
   }
+
+  private weightedRandom<T extends { weight: number }>(items: T[]): T {
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+    let random = Math.random() * totalWeight;
+    for (const item of items) {
+      if (random < item.weight) {
+        return item;
+      }
+      random -= item.weight;
+    }
+    // Fallback (Não vai executar se a probabilidade > 0)
+    return items[items.length - 1];
+  }
+  
 
   private handleRoll(socket: Socket, roomId: string) {
     const sala = this.rooms.get(roomId);
@@ -145,41 +177,46 @@ export class GameServer {
     player.position = (player.position + dice) % sala.board.length;
     const casa = sala.board[player.position];
     // NOVA CONDIÇÃO DE VITÓRIA
-    if (player.position === 9) {
-      const ingredientesUnicos = new Set(player.ingredients);
-      if (ingredientesUnicos.size >= 6) {
-        sala.winner = player;
-        sala.started = false;
-        this.emitRoomState(roomId);
-        this.io.to(roomId).emit('gameOver', { name: player.name, ingredients: player.ingredients });
-        return;
-      } else {
-        // Não venceu, volta para o início
-        player.position = 0;
-        this.emitRoomState(roomId);
-      }
+    const saborDoJogador = pizzaFlavors[player.flavor];
+    const ingredientesColetados = new Set(player.ingredients);
+    const venceu = saborDoJogador.every(ing => ingredientesColetados.has(ing));
+    if (player.position === 9 && venceu) {
+      sala.winner = player;
+      sala.started = false;
+      this.emitRoomState(roomId, dice);
+      this.io.to(roomId).emit('gameOver', { name: player.name, ingredients: player.ingredients });
+      return;
+    } else if (player.position === 9 && !venceu) {
+      // Não venceu, volta para o início
+      player.position = 0;
+      this.emitRoomState(roomId, dice);
     }
+    
     if (casa === 'ingredient') {
       // Sorteia ingrediente
-      const ingredientes = ['🍅', '🧀', '🍄', '🥓', '🌶️', '🍍'];
+      const ingredientes = ['Presunto', 'Queijo', 'Azeitona', 'Cebola', 'Ovo', 'Tomate', 'Linguiça', 'Oregano', 'Ervilha', 'Milho', 'Broccoli'];
       const novo = ingredientes[Math.floor(Math.random() * ingredientes.length)];
-      player.ingredients.push(novo);
+      const saborDoJogador = pizzaFlavors[player.flavor];
+      if (saborDoJogador.includes(novo) && !player.ingredients.includes(novo)) {
+        player.ingredients.push(novo);
+      }
       sala.turn++;
-      this.emitRoomState(roomId);
+      this.emitRoomState(roomId, dice, novo);
     } else if (casa === 'event') {
-      // Sorteia evento simples
+      // Sorteia evento de acordo com probabilidade
       const eventos = [
-        { desc: 'Volte 2 casas', effect: (p: Player, sala: Room) => { p.position = (p.position - 2); } },
-        { desc: 'Perca um ingrediente', effect: (p: Player, sala: Room) => { p.ingredients.pop(); } },
-        { desc: 'Avance 1 casa', effect: (p: Player, sala: Room) => { p.position = (p.position + 1); } },
+        { desc: 'Volte 2 casas', effect: (p: Player, sala: Room) => { p.position = (p.position - 2); }, weight: 0.3 },
+        { desc: 'Perca um ingrediente', effect: (p: Player, sala: Room) => { p.ingredients.pop(); }, weight: 0.2 },
+        { desc: 'Avance 1 casa', effect: (p: Player, sala: Room) => { p.position = (p.position + 1); }, weight: 0.5 },
+        { desc: 'Você queimou a pizza, perdeu tudo!', effect: (p: Player, sala: Room) => { while (p.ingredients.length > 0){p.ingredients.pop()}; }, weight: 0.05 },
       ];
-      const evento = eventos[Math.floor(Math.random() * eventos.length)];
+      const evento = this.weightedRandom(eventos);
       player.pendingCard = evento;
       socket.emit('card', { description: evento.desc });
       // Não avança o turno ainda, só após confirmar
     } else {
       sala.turn++;
-      this.emitRoomState(roomId);
+      this.emitRoomState(roomId, dice);
     }
   }
 

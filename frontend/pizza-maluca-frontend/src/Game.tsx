@@ -9,9 +9,29 @@ interface Props {
   gameOver: { name?: string } | null;
   room: string;
   winnerIngredients?: string[];
+  diceNumber?: number;
+  ingredienteObtido?: string;
 }
 
-const Game: React.FC<Props> = ({ socket, me, players, gameOver, room, winnerIngredients = [] }) => {
+const diceSymbols: Record<number, string> = {
+  1:'⚀',
+  2:'⚁',
+  3:'⚂',
+  4:'⚃',
+  5:'⚄',
+  6:'⚅'
+};
+
+const pizzaFlavors: Record<string, string[]> = {
+  Portuguesa: ['Presunto', 'Queijo', 'Azeitona', 'Cebola', 'Ovo'],
+  Toscana: ['Presunto', 'Azeitona', 'Tomate', 'Linguiça', 'Cebola'],
+  Calabresa: ['Linguiça', 'Queijo', 'Azeitona', 'Cebola', 'Oregano'],
+  Romana: ['Presunto', 'Queijo', 'Ervilha', 'Milho', 'Cebola'],
+  Vegetariana: ['Tomate', 'Broccoli', 'Milho', 'Ovo', 'Ervilha'],
+  Marguerita: ['Tomate', 'Queijo', 'Cebola', 'Oregano', 'Azeitona'],
+};
+
+const Game: React.FC<Props> = ({ socket, me, players, gameOver, room, winnerIngredients = [], diceNumber, ingredienteObtido}) => {
   // Busca sempre o estado mais recente do jogador e do turno
   const myPlayer = players.find(p => p.id === me.id) || null;
   // O backend controla o turno, então usamos o campo 'turn' se disponível
@@ -25,7 +45,8 @@ const Game: React.FC<Props> = ({ socket, me, players, gameOver, room, winnerIngr
     return () => { socket.off('state', onState); };
   }, [socket]);
   const jogadorDaVez = players.length > 0 ? players[turn % players.length] : null;
-  const pizzaCompleta = myPlayer && new Set(myPlayer.ingredients).size >= 6;
+  const pizzaCompleta = myPlayer && new Set(myPlayer.ingredients).size >= 5;
+  const requiredIngredients = pizzaFlavors[myPlayer!.flavor] || [];
 
   // Estado de carta de evento
   const [card, setCard] = React.useState<string|null>(null);
@@ -76,11 +97,22 @@ const Game: React.FC<Props> = ({ socket, me, players, gameOver, room, winnerIngr
     <div>
       {renderBoard(players)}
       <div className="card">
-        <h3>Jogador da vez: {jogadorDaVez ? jogadorDaVez.name : '-'}</h3>
+        <div className='ingredients'>
+          <h3>Jogador da vez: {jogadorDaVez ? jogadorDaVez.name : '-'}</h3>
+          <h3>{ingredienteObtido !== undefined ? 'O ingrediente sorteado foi: ' + ingredienteObtido : ''}</h3>
+        </div>
         <p>Sua posição no tabuleiro: {myPlayer ? myPlayer.position+1 : '-'}</p>
+        <p>Sabor da sua pizza: {myPlayer?.flavor}</p>
+        <p>Ingredientes necessários para o sabor: {requiredIngredients.map((ingredient, idx) => (
+          <li key={idx} style={{marginLeft:12, marginTop:5}}>{ingredient}</li>
+        ))}</p>
         <p>Seus ingredientes: {myPlayer && myPlayer.ingredients.length > 0
-          ? (myPlayer.ingredients.map((i, idx) => <span key={idx} style={{fontSize:'2em',margin:'0 4px'}}>{i}</span>) as React.ReactNode[])
+          ? (myPlayer.ingredients.map((i, idx) => <span key={idx} style={{margin:'0 4px'}}>{i}</span>) as React.ReactNode[])
           : '-'}</p>
+        <div className='dices'>
+          <p style={{alignContent: 'center', margin: '5px'}}>Dado: </p>
+          <h1>{diceNumber !== undefined ? diceSymbols[diceNumber] : '-'}</h1>
+        </div>
         {pizzaCompleta && <div style={{color:'green',fontWeight:'bold'}}>🍕 Pizza Completa!</div>}
         {myPlayer && jogadorDaVez && myPlayer.id === jogadorDaVez.id && !gameOver && !card && (
           <button onClick={() => socket.emit('rollDice', room)}>Jogar Dado</button>

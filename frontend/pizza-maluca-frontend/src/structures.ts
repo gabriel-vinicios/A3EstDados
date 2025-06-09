@@ -7,5 +7,6 @@ export interface PlayerState {
   id: string;
   name: string;
   position: number;
+  flavor: string;
   ingredients: string[];
 }
